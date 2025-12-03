@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { format, parse } from "date-fns";
+import { format, isSameDay } from "date-fns";
 import { useState } from "react";
 import { OverlayTrigger, Tooltip, TooltipProps } from "react-bootstrap";
 import Calendar from "react-calendar";
@@ -32,12 +32,12 @@ function App() {
         }
       );
 
-      const timingsData: { DateTime: string; Ranking: string }[] =
+      const timingsData: { dateTime: string; ranking: string }[] =
         await response.json();
 
       const formattedData = timingsData.map((x) => ({
-        time: parse(x.DateTime, "dd/MM/yyyy HH:mm", new Date()),
-        ranking: x.Ranking,
+        time: new Date(x.dateTime),
+        ranking: x.ranking,
       }));
 
       const sortedData = formattedData.sort((x, y) =>
@@ -82,19 +82,20 @@ function App() {
     }, {} as { [key: string]: { month: string; year: string; timings: { time: Date; ranking: string }[] } })
   );
 
-  const tileContent = () => (
+  const tileContent = (date: Date) => (
     <OverlayTrigger
       placement="top"
       overlay={renderTooltip}
       trigger="click"
       rootClose
+      key={`overlay-${format(date, "yyyy-MM-dd")}`}
     >
       <div className="absolute top-0 h-full w-full" />
     </OverlayTrigger>
   );
 
   const renderTooltip = (props: TooltipProps) => {
-    console.log("renderTooltip");
+    console.log("render tooltip");
     if (!tooltipTimes.length) {
       return <Tooltip id="button-tooltip" {...props} />;
     }
@@ -105,10 +106,13 @@ function App() {
         className="bg-white p-3 border border-black"
         {...props}
       >
-        <h3 className="font-bold mb-2">Time & Consistency</h3>
+        <h3 className="font-bold mb-2 text-black">Time & Consistency</h3>
         <ul>
           {tooltipTimes.map((x) => (
-            <li key={`listItem-${x.time}`}>{`${x.time} - ${x.ranking}`}</li>
+            <li
+              className="text-black"
+              key={`listItem-${x.time}`}
+            >{`${x.time} - ${x.ranking}`}</li>
           ))}
         </ul>
       </Tooltip>
@@ -132,7 +136,7 @@ function App() {
                 new Date(parseInt(month.year), parseInt(month.month) - 1, 1)
               }
               // Add keys to tileContent and overlayTrigger
-              tileContent={tileContent}
+              tileContent={({ date }) => tileContent(date)}
               showNeighboringMonth={false}
               showNavigation={false}
               onClickDay={(clickedDate) => {
@@ -149,10 +153,9 @@ function App() {
 
                 setTooltipTimes(timesForTooltip);
               }}
-              tileClassName={({ activeStartDate, date }) => {
-                const poosForThatDay = month.timings.filter(
-                  (x) =>
-                    format(x.time, "dd/MM/yyyy") === format(date, "dd/MM/yyyy")
+              tileClassName={({ date }) => {
+                const poosForThatDay = month.timings.filter((x) =>
+                  isSameDay(x.time, date)
                 );
 
                 switch (poosForThatDay.length) {
