@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format, isSameDay } from "date-fns";
-import { useState } from "react";
-import { OverlayTrigger, Tooltip, TooltipProps } from "react-bootstrap";
+import { useCallback } from "react";
+import { OverlayTrigger, Tooltip } from "react-bootstrap";
 import Calendar from "react-calendar";
 import "./App.css";
 import { convertMostRecentTimings } from "./mostRecent";
@@ -12,14 +12,7 @@ type Timing = {
   ranking: string;
 };
 
-type TooltipTiming = {
-  time: string;
-  ranking: string;
-};
-
 function App() {
-  const [tooltipTimes, setTooltipTimes] = useState<TooltipTiming[]>([]);
-
   const { data } = useQuery<Timing[]>({
     queryKey: ["get", "timings"],
     queryFn: async () => {
@@ -47,6 +40,63 @@ function App() {
       return sortedData;
     },
   });
+
+  const createTileContent = useCallback((monthTimings: Timing[]) => {
+    // Pre-calculate tooltip JSX for each date in the month
+    const tooltipsByDate = new Map<string, JSX.Element>();
+
+    monthTimings.forEach((monthTiming) => {
+      const dateKey = format(monthTiming.time, "yyyy-MM-dd");
+
+      if (!tooltipsByDate.has(dateKey)) {
+        const timesForDate = monthTimings.filter((t) =>
+          isSameDay(monthTiming.time, t.time)
+        );
+
+        const tooltipData = timesForDate.map((x) => ({
+          time: format(x.time, "HH:mm"),
+          ranking: x.ranking,
+        }));
+
+        const tooltipElement = (
+          <Tooltip
+            id={`tooltip-${dateKey}`}
+            className="bg-white p-3 border border-black"
+          >
+            <h3 className="font-bold mb-2 text-black">Time & Consistency</h3>
+            <ul>
+              {tooltipData.map((x) => (
+                <li
+                  className="text-black"
+                  key={`listItem-${x.time}`}
+                >{`${x.time} - ${x.ranking}`}</li>
+              ))}
+            </ul>
+          </Tooltip>
+        );
+
+        tooltipsByDate.set(dateKey, tooltipElement);
+      }
+    });
+
+    return ({ date }: { date: Date }) => {
+      const dateKey = format(date, "yyyy-MM-dd");
+      const tooltipElement = tooltipsByDate.get(dateKey);
+
+      if (!tooltipElement) return null;
+
+      return (
+        <OverlayTrigger
+          placement="top"
+          overlay={tooltipElement}
+          trigger="click"
+          rootClose
+        >
+          <div className="absolute top-0 h-full w-full" />
+        </OverlayTrigger>
+      );
+    };
+  }, []);
 
   if (!data) {
     return null;
@@ -82,47 +132,11 @@ function App() {
     }, {} as { [key: string]: { month: string; year: string; timings: { time: Date; ranking: string }[] } })
   );
 
-  const tileContent = (date: Date) => (
-    <OverlayTrigger
-      placement="top"
-      overlay={renderTooltip}
-      trigger="click"
-      rootClose
-      key={`overlay-${format(date, "yyyy-MM-dd")}`}
-    >
-      <div className="absolute top-0 h-full w-full" />
-    </OverlayTrigger>
-  );
-
-  const renderTooltip = (props: TooltipProps) => {
-    console.log("render tooltip");
-    if (!tooltipTimes.length) {
-      return <Tooltip id="button-tooltip" {...props} />;
-    }
-
-    return (
-      <Tooltip
-        id="button-tooltip"
-        className="bg-white p-3 border border-black"
-        {...props}
-      >
-        <h3 className="font-bold mb-2 text-black">Time & Consistency</h3>
-        <ul>
-          {tooltipTimes.map((x) => (
-            <li
-              className="text-black"
-              key={`listItem-${x.time}`}
-            >{`${x.time} - ${x.ranking}`}</li>
-          ))}
-        </ul>
-      </Tooltip>
-    );
-  };
-
   return (
     <div className="flex flex-wrap">
       {results.map((month) => {
         const monthName = format(month.month, "LLLL");
+        const monthTileContent = createTileContent(month.timings);
 
         return (
           <div
@@ -135,24 +149,9 @@ function App() {
               activeStartDate={
                 new Date(parseInt(month.year), parseInt(month.month) - 1, 1)
               }
-              // Add keys to tileContent and overlayTrigger
-              tileContent={({ date }) => tileContent(date)}
+              tileContent={monthTileContent}
               showNeighboringMonth={false}
               showNavigation={false}
-              onClickDay={(clickedDate) => {
-                const timesFromDate = data.filter(
-                  (date) =>
-                    format(date.time, "dd/MM/yyyy") ===
-                    format(clickedDate, "dd/MM/yyyy")
-                );
-
-                const timesForTooltip = timesFromDate.map((x) => ({
-                  time: format(x.time, "HH:mm"),
-                  ranking: x.ranking,
-                }));
-
-                setTooltipTimes(timesForTooltip);
-              }}
               tileClassName={({ date }) => {
                 const poosForThatDay = month.timings.filter((x) =>
                   isSameDay(x.time, date)
